@@ -1,0 +1,1002 @@
+{
+  "info": {
+    "_postman_id": "3fca0192-91f0-4199-8d90-f9a7d80b7771",
+    "name": "Bigfoot Express Freight API",
+    "description": "# Bigfoot Express Freight - API Collection\n\nThis collection wraps the **Parcel Perfect Ecommerce Service (JSON API, v27)** that powers Bigfoot Express Freight's customer-facing shipping API. It lets customers get quotes, look up places/postcodes, submit collections and waybills, and retrieve tracking/waybill details, directly from Postman.\n\n## Getting started\n1. Import both this collection and the companion **Bigfoot Express Freight - My Account** environment, then select that environment in Postman's top-right environment picker. Fill in your `email`, `password` and `accnum` in the environment (ask Bigfoot Express Freight for your account credentials if you don't have them). Also update the collection's `baseUrl` variable to your production service URL - it defaults to Parcel Perfect's public demo endpoint, which only accepts demo credentials.\n2. Run **1. Authentication > 1 - Get Salt**, then **2 - Get Secure Token**. The token is saved automatically and reused by every other request in this collection for the next ~24 hours.\n3. Use **2. Places Lookup** to resolve your origin/destination postcodes or town names into the `place`/`town` values the API expects.\n4. Either:\n   - **Quote first**: `3. Quotes > Request Quote` -> `Update Service` -> `Convert Quote To Waybill` / `Convert Quote To Collection`, or\n   - **Submit directly**: `4. Collections > Submit Collection` / `Submit Compound Collection`.\n5. Use `5. Waybills > Get Single Waybill` to check on a shipment afterwards.\n\n## How the API works\nEvery call is an HTTP `GET` to `baseUrl` with three (or four) query parameters:\n- `class` - the API class, e.g. `Auth`, `Quote`, `Collection`\n- `method` - the method to call on that class, e.g. `getSalt`, `requestQuote`\n- `params` - a JSON-encoded object of parameters for that method\n- `token_id` - your auth token, required on every call except `getSalt` and `getSecureToken`\n\nEvery response has the same envelope:\n```json\n{ \"errorcode\": 0, \"errormessage\": \"\", \"results\": [ { ... } ] }\n```\n`errorcode` is `0` on success; any other value means `errormessage` describes what went wrong.\n\n## Source material\nThe requests in this collection were built from the reference PHP/SOAP examples and the full field-level API specification (`Parcel Perfect Ecommerce Service - v27.pdf` / `.xlsx`) under `refs/API/Parcel Perfect/` in this repository - refer to those for the complete list of optional fields (insurance, customs, surcharge flags, multi-page references, etc.) not shown in the example payloads here.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "description": "The Bigfoot Express Freight API (powered by Parcel Perfect's Ecommerce Service) uses a salt + MD5 + token authentication flow:\n\n1. **Get Salt** - fetch a one-time salt for your account\n2. **Get Secure Token** - hash your password with the salt and exchange it for a token\n3. Use the returned token (`{{token}}`) as the `token_id` query parameter on every subsequent call\n\nRun requests 1 and 2 in order at the start of every session (or whenever your token expires - tokens are valid for roughly 24 hours). Set your `email` and `password` collection variables first.",
+      "item": [
+        {
+          "name": "1 - Get Salt",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"email\":\"{{email}}\"}&method=getSalt&class=Auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"email\":\"{{email}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getSalt"
+                },
+                {
+                  "key": "class",
+                  "value": "Auth"
+                }
+              ]
+            },
+            "description": "Step 1 of authentication. Returns a random salt used to build the MD5 password hash required by **Get Secure Token**.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| email | M | The username (normally an email address) used for authentication |\n\nOn success, the returned `salt` is saved to the collection variable `salt` automatically so you don't need to copy it manually."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const salt = jsonData.results[0].salt;",
+                  "    pm.collectionVariables.set('salt', salt);",
+                  "    console.log('Salt saved: ' + salt);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2 - Get Secure Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"email\":\"{{email}}\",\"password\":\"{{md5password}}\"}&method=getSecureToken&class=Auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"email\":\"{{email}}\",\"password\":\"{{md5password}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getSecureToken"
+                },
+                {
+                  "key": "class",
+                  "value": "Auth"
+                }
+              ]
+            },
+            "description": "Step 2 of authentication. Exchanges your password (MD5-hashed with the salt from **Get Salt**) for a secure token. The token is required on almost every other call in this collection (sent as the `token_id` query parameter).\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| email | M | The username used for authentication |\n| password | M | MD5 hash of `password + salt` |\n\nA pre-request script computes the MD5 hash automatically from the `password` and `salt` collection variables, so just run **Get Salt** first, then run this request. The returned token is saved to the collection variable `token` automatically."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const CryptoJS = require('crypto-js');",
+                  "const password = pm.collectionVariables.get('password');",
+                  "const salt = pm.collectionVariables.get('salt');",
+                  "",
+                  "if (!salt) {",
+                  "    console.warn('No salt found - run \"1 - Get Salt\" first.');",
+                  "}",
+                  "",
+                  "const hash = CryptoJS.MD5(password + salt).toString();",
+                  "pm.collectionVariables.set('md5password', hash);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const result = jsonData.results[0];",
+                  "    // API docs and sample code disagree on the field name, handle both",
+                  "    const token = result.tokenid || result.token_id;",
+                  "    pm.collectionVariables.set('token', token);",
+                  "    console.log('Token saved: ' + token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3 - Check Token Validity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={}&method=isTokenValid&class=Auth&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{}"
+                },
+                {
+                  "key": "method",
+                  "value": "isTokenValid"
+                },
+                {
+                  "key": "class",
+                  "value": "Auth"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Checks whether the token currently stored in the `token` collection variable is still valid (tokens expire after 24 hours). Not covered in the formal v27 spec document but used in Parcel Perfect's own sample code - if your account returns an error, request a fresh token instead using **Get Salt** and **Get Secure Token**."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4 - Expire Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"token_id\":\"{{token}}\"}&method=expireToken&class=Auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"token_id\":\"{{token}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "expireToken"
+                },
+                {
+                  "key": "class",
+                  "value": "Auth"
+                }
+              ]
+            },
+            "description": "Manually expires (logs out) the token currently stored in the `token` collection variable. Useful for cleanly ending a session.\n\n**Params (JSON)**\n| Field | Description |\n|---|---|\n| token_id | The token to expire |"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Places Lookup",
+      "description": "Before submitting a quote, collection or waybill you need the internal `place` code and `town` name for both the origin and destination. Use these two requests to resolve a postcode or a town name into that pair of values.",
+      "item": [
+        {
+          "name": "Get Places By Postcode",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"postcode\":\"{{postcode}}\"}&method=getPlacesByPostcode&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"postcode\":\"{{postcode}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getPlacesByPostcode"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Looks up valid place/town codes for a given postcode. The returned `place` (internal town code) and `town` name are required when building quotes, collections and waybills (`origplace`/`origtown` or `destplace`/`desttown`).\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| postcode | M | Postcode to search for |"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Places By Name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"name\":\"{{placeName}}\"}&method=getPlacesByName&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"name\":\"{{placeName}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getPlacesByName"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Looks up valid place/town codes by name or partial name. Use this when you know the town/suburb name but not its postcode.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| name | M | Name or partial name to search for |"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Quotes",
+      "description": "Standard quoting workflow: **Request Quote** to get rates for a shipment, **Update Service** to lock in the service you want, then convert the quote into either a **Waybill** (you deliver/drop off) or a **Collection** (Bigfoot collects from you).",
+      "item": [
+        {
+          "name": "Request Quote",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"details\":{\"specinstruction\":\"This is a test\",\"reference\":\"Test reference\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origpers\":\"TESTCUSTOMER\",\"origpercontact\":\"Origin contact name\",\"origperpcode\":\"6730\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destperphone\":\"0123456789\",\"destpercell\":\"0123456789\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destpers\":\"TESTCUSTOMER\",\"destpercontact\":\"Destination contact name\",\"destperpcode\":\"3340\"},\"contents\":[{\"item\":1,\"description\":\"This is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":1}],\"s_ttype\":\"I\"}&method=requestQuote&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"details\":{\"specinstruction\":\"This is a test\",\"reference\":\"Test reference\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origpers\":\"TESTCUSTOMER\",\"origpercontact\":\"Origin contact name\",\"origperpcode\":\"6730\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destperphone\":\"0123456789\",\"destpercell\":\"0123456789\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destpers\":\"TESTCUSTOMER\",\"destpercontact\":\"Destination contact name\",\"destperpcode\":\"3340\"},\"contents\":[{\"item\":1,\"description\":\"This is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":1}],\"s_ttype\":\"I\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "requestQuote"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Requests a freight quote for a shipment. Requires the `origplace`/`origtown` and `destplace`/`desttown` from **Places Lookup**, plus at least one contents line with `actmass` > 0 (a rate will not calculate otherwise).\n\n**Mandatory fields**: `details`, `contents` (each line needs `pieces`, `description`, `actmass`, `item`), `ttype` (defaults to `I` for insert).\n\nThe response contains an array of `rates`, one per available service - pick one and pass its `service` code to **Update Service**. The `quoteno` is saved automatically to the `quoteno` collection variable."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const quoteno = jsonData.results[0].quoteno;",
+                  "    pm.collectionVariables.set('quoteno', quoteno);",
+                  "    console.log('Quote number saved: ' + quoteno);",
+                  "    console.log('Available services:', JSON.stringify(jsonData.results[0].rates));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"quoteno\":\"{{quoteno}}\",\"service\":\"{{service}}\"}&method=updateService&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"quoteno\":\"{{quoteno}}\",\"service\":\"{{service}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "updateService"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Sets which transport service to use on a previously requested quote, and returns the final calculated rate for that service.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| quoteno | M | Quote number returned by Request Quote |\n| service | M | 3-character service code, e.g. one from the `rates` array |\n| reference | | Customer reference |"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Convert Quote To Waybill",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"quoteno\":\"{{quoteno}}\",\"specins\":\"special instructions\",\"printWaybill\":0,\"printLabels\":0}&method=quoteToWaybill&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"quoteno\":\"{{quoteno}}\",\"specins\":\"special instructions\",\"printWaybill\":0,\"printLabels\":0}"
+                },
+                {
+                  "key": "method",
+                  "value": "quoteToWaybill"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Converts a priced quote (after **Update Service**) into a real waybill.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| quoteno | M | Quote number previously generated by Request Quote |\n| specins | | Special instructions |\n| printWaybill | | 1 = return a base64-encoded waybill PDF |\n| printLabels | | 1 = return a base64-encoded labels PDF |\n\nSet `printWaybill`/`printLabels` to `1` and use the **Visualize** tab in Postman to preview the returned PDF inline."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const result = jsonData.results[0];",
+                  "    if (result.waybillno) {",
+                  "        pm.collectionVariables.set('waybillno', result.waybillno);",
+                  "        console.log('Waybill number saved: ' + result.waybillno);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Convert Quote To Collection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"quoteno\":\"{{quoteno}}\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"quoteCollectionDate\":\"27.01.2026\",\"notes\":\"Some notes here\",\"printWaybill\":0,\"printLabels\":0}&method=quoteToCollection&class=Collection&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"quoteno\":\"{{quoteno}}\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"quoteCollectionDate\":\"27.01.2026\",\"notes\":\"Some notes here\",\"printWaybill\":0,\"printLabels\":0}"
+                },
+                {
+                  "key": "method",
+                  "value": "quoteToCollection"
+                },
+                {
+                  "key": "class",
+                  "value": "Collection"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Converts a priced quote (after **Update Service**) into a collection request, so Bigfoot Express Freight will collect the shipment from you.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| quoteno | M | Quote number previously generated by Request Quote |\n| starttime | | Collection window start time, `hh:mm:ss` |\n| endtime | | Collection window end time, `hh:mm:ss` |\n| quoteCollectionDate | | Collection date, `dd.mm.yyyy` |\n| notes | | Notes for the collection |\n| specins | | Special instructions |\n| printWaybill | | 1 = return a base64-encoded waybill PDF |\n| printLabels | | 1 = return a base64-encoded labels PDF |"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const result = jsonData.results[0];",
+                  "    if (result.collectno) {",
+                  "        pm.collectionVariables.set('collectno', result.collectno);",
+                  "        console.log('Collection number saved: ' + result.collectno);",
+                  "    }",
+                  "    if (result.waybillno) {",
+                  "        pm.collectionVariables.set('waybillno', result.waybillno);",
+                  "        console.log('Waybill number saved: ' + result.waybillno);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Collections",
+      "description": "Submit collection requests directly (skipping the quote step). Use **Submit Collection** for a single waybill, or **Submit Compound Collection** to collect several waybills bound for different destinations in one run.",
+      "item": [
+        {
+          "name": "Submit Collection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"details\":{\"service\":\"{{service}}\",\"accnum\":\"{{accnum}}\",\"collectiondate\":\"27.01.2026\",\"specinstruction\":\"This is a test\",\"reference\":\"Test reference\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origpers\":\"TESTCUSTOMER\",\"origpercontact\":\"Origin contact name\",\"origperpcode\":\"6730\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destperphone\":\"0123456789\",\"destpercell\":\"0123456789\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destpers\":\"TESTCUSTOMER\",\"destpercontact\":\"Destination contact name\",\"destperpcode\":\"3340\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"notes\":\"Collection note\"},\"contents\":[{\"item\":1,\"description\":\"This is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":1}],\"s_ttype\":\"I\",\"printWaybill\":0,\"printLabels\":0}&method=submitCollection&class=Collection&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"details\":{\"service\":\"{{service}}\",\"accnum\":\"{{accnum}}\",\"collectiondate\":\"27.01.2026\",\"specinstruction\":\"This is a test\",\"reference\":\"Test reference\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origpers\":\"TESTCUSTOMER\",\"origpercontact\":\"Origin contact name\",\"origperpcode\":\"6730\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destperphone\":\"0123456789\",\"destpercell\":\"0123456789\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destpers\":\"TESTCUSTOMER\",\"destpercontact\":\"Destination contact name\",\"destperpcode\":\"3340\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"notes\":\"Collection note\"},\"contents\":[{\"item\":1,\"description\":\"This is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":1}],\"s_ttype\":\"I\",\"printWaybill\":0,\"printLabels\":0}"
+                },
+                {
+                  "key": "method",
+                  "value": "submitCollection"
+                },
+                {
+                  "key": "class",
+                  "value": "Collection"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Directly submits a waybill and collection request in a single call, without going through the quote workflow first. Use this once you know exactly which service and account number you're shipping with.\n\n**Mandatory fields (details)**: `service`, `collectiondate`, `origpers`, `origperadd1`, `origtown`, `origperpcode`, `origpercontact`, `origperphone`, `destpers`, `destperadd1`, `desttown`, `destperpcode`, `destpercontact`, `destperphone`.\n\n**Mandatory fields (each contents line)**: `pieces`, `description`, `actmass`, `item`. At least one contents line with `actmass` > 0 is required."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const result = jsonData.results[0];",
+                  "    if (result.waybillno) { pm.collectionVariables.set('waybillno', result.waybillno); }",
+                  "    if (result.collectno) { pm.collectionVariables.set('collectno', result.collectno); }",
+                  "    console.log('Waybill/Collection created:', JSON.stringify(result));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Compound Collection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"details\":{\"accnum\":\"{{accnum}}\",\"collectiondate\":\"27.01.2026\",\"origpers\":\"Origin customer name\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origperpcode\":\"6730\",\"origpercontact\":\"Origin contact name\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"notes\":\"Collection note\"},\"waybills\":[{\"details\":{\"service\":\"{{service}}\",\"waydate\":\"27.01.2026\",\"duedate\":\"30.01.2026\",\"destpers\":\"Destination customer 1\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destperpcode\":\"3340\",\"destpercontact\":\"Destination contact name\",\"destperphone\":\"0123456789\",\"specinstruction\":\"instruction\",\"reference\":\"waybill reference 1\"},\"contents\":[{\"item\":1,\"description\":\"this is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":15,\"dim3\":15,\"actmass\":1.5}]},{\"details\":{\"service\":\"{{service}}\",\"waydate\":\"27.01.2026\",\"duedate\":\"30.01.2026\",\"destpers\":\"Destination customer 2\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destperpcode\":\"3340\",\"destpercontact\":\"Destination contact name\",\"destperphone\":\"0123456789\",\"specinstruction\":\"instruction\",\"reference\":\"waybill reference 2\"},\"contents\":[{\"item\":1,\"description\":\"this is another test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":2.5}]}],\"s_ttype\":\"I\"}&method=submitCompoundCollection&class=Collection&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"details\":{\"accnum\":\"{{accnum}}\",\"collectiondate\":\"27.01.2026\",\"origpers\":\"Origin customer name\",\"origperadd1\":\"Address line 1\",\"origperadd2\":\"Address line 2\",\"origperadd3\":\"Address line 3\",\"origperadd4\":\"Address line 4\",\"origplace\":\"{{origPlace}}\",\"origtown\":\"{{origTown}}\",\"origperpcode\":\"6730\",\"origpercontact\":\"Origin contact name\",\"origperphone\":\"0123456789\",\"origpercell\":\"0123456789\",\"starttime\":\"08:00\",\"endtime\":\"16:30\",\"notes\":\"Collection note\"},\"waybills\":[{\"details\":{\"service\":\"{{service}}\",\"waydate\":\"27.01.2026\",\"duedate\":\"30.01.2026\",\"destpers\":\"Destination customer 1\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destperpcode\":\"3340\",\"destpercontact\":\"Destination contact name\",\"destperphone\":\"0123456789\",\"specinstruction\":\"instruction\",\"reference\":\"waybill reference 1\"},\"contents\":[{\"item\":1,\"description\":\"this is a test\",\"pieces\":1,\"dim1\":10,\"dim2\":15,\"dim3\":15,\"actmass\":1.5}]},{\"details\":{\"service\":\"{{service}}\",\"waydate\":\"27.01.2026\",\"duedate\":\"30.01.2026\",\"destpers\":\"Destination customer 2\",\"destperadd1\":\"Address line 1\",\"destperadd2\":\"Address line 2\",\"destperadd3\":\"Address line 3\",\"destperadd4\":\"Address line 4\",\"destplace\":\"{{destPlace}}\",\"desttown\":\"{{destTown}}\",\"destperpcode\":\"3340\",\"destpercontact\":\"Destination contact name\",\"destperphone\":\"0123456789\",\"specinstruction\":\"instruction\",\"reference\":\"waybill reference 2\"},\"contents\":[{\"item\":1,\"description\":\"this is another test\",\"pieces\":1,\"dim1\":10,\"dim2\":10,\"dim3\":10,\"actmass\":2.5}]}],\"s_ttype\":\"I\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "submitCompoundCollection"
+                },
+                {
+                  "key": "class",
+                  "value": "Collection"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Submits a single collection covering **multiple waybills** (multiple destinations picked up from one origin in one collection run). Each entry in `waybills` has its own `details` (destination) and `contents`, and may optionally include `wayrefs` (extra references) and `tracks` (tracking numbers).\n\nThis is the JSON equivalent of the `submitCompoundCollection` SOAP/JSON method - see the reference PHP examples under `refs/API/Parcel Perfect/` for a fully worked example including tracking numbers and surcharge flags."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}",
+                  "",
+                  "if (jsonData.errorcode === 0) {",
+                  "    const result = jsonData.results[0];",
+                  "    if (result.collectno) {",
+                  "        pm.collectionVariables.set('collectno', result.collectno);",
+                  "        console.log('Collection number saved: ' + result.collectno);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Waybills",
+      "description": "Look up an existing waybill by number.",
+      "item": [
+        {
+          "name": "Get Single Waybill",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"waybillno\":\"{{waybillno}}\"}&method=getSingleWaybill&class=Waybill&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"waybillno\":\"{{waybillno}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getSingleWaybill"
+                },
+                {
+                  "key": "class",
+                  "value": "Waybill"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Retrieves the full details, contents, tracking numbers and references for a single waybill.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| waybillno | M | Waybill number |\n\n_Note: the class for this method is inferred as `Waybill` from the naming convention used by other methods (e.g. `Auth`, `Quote`, `Collection`) - it is not shown in a worked example. If you get a class-not-found style error, check with Bigfoot/Parcel Perfect support for the correct class name._"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Default Content Items",
+      "description": "Look up pre-configured default parcel/contents templates for your account.",
+      "item": [
+        {
+          "name": "Get Default Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?params={\"name\":\"{{defItemName}}\"}&method=getDefItems&class=Quote&token_id={{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "key": "params",
+                  "value": "{\"name\":\"{{defItemName}}\"}"
+                },
+                {
+                  "key": "method",
+                  "value": "getDefItems"
+                },
+                {
+                  "key": "class",
+                  "value": "Quote"
+                },
+                {
+                  "key": "token_id",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Retrieves your account's pre-configured default contents items (if your account has any set up by Bigfoot Express Freight) - useful for reusing common parcel dimensions/weights instead of typing them out on every request.\n\n**Params (JSON)**\n| Field | Mandatory | Description |\n|---|---|---|\n| name | M | Default content item name to search for |\n\n_Note: the class for this method is inferred as `Quote` - if you get a class-not-found style error, check with Bigfoot/Parcel Perfect support for the correct class name._"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errorcode is 0 (no error)', function () {",
+                  "    pm.expect(jsonData.errorcode).to.eql(0);",
+                  "});",
+                  "",
+                  "if (jsonData.errorcode !== 0) {",
+                  "    console.warn('API error: ' + jsonData.errormessage);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://adpdemo.pperfect.com/ecomService/v10/Json/",
+      "type": "string",
+      "description": "Base URL of the Ecommerce Service. Defaults to Parcel Perfect's public demo endpoint - replace with your production URL from Bigfoot Express Freight."
+    },
+    {
+      "key": "email",
+      "value": "username@parcelperfect.com",
+      "type": "string",
+      "description": "Your API username (usually an email address)."
+    },
+    {
+      "key": "password",
+      "value": "password",
+      "type": "string",
+      "description": "Your API password (plain text - hashed automatically before use)."
+    },
+    {
+      "key": "salt",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically by 'Get Salt'."
+    },
+    {
+      "key": "md5password",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically by the 'Get Secure Token' pre-request script."
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically by 'Get Secure Token'. Used as token_id on all authenticated calls."
+    },
+    {
+      "key": "accnum",
+      "value": "",
+      "type": "string",
+      "description": "Your Bigfoot Express Freight account number."
+    },
+    {
+      "key": "service",
+      "value": "",
+      "type": "string",
+      "description": "3-character service code, e.g. from a quote's rates array."
+    },
+    {
+      "key": "postcode",
+      "value": "7700",
+      "type": "string",
+      "description": "Postcode to look up in 'Get Places By Postcode'."
+    },
+    {
+      "key": "placeName",
+      "value": "",
+      "type": "string",
+      "description": "Town/place name to look up in 'Get Places By Name'."
+    },
+    {
+      "key": "origPlace",
+      "value": "",
+      "type": "string",
+      "description": "Origin 'place' code, from Places Lookup."
+    },
+    {
+      "key": "origTown",
+      "value": "",
+      "type": "string",
+      "description": "Origin town name, from Places Lookup."
+    },
+    {
+      "key": "destPlace",
+      "value": "",
+      "type": "string",
+      "description": "Destination 'place' code, from Places Lookup."
+    },
+    {
+      "key": "destTown",
+      "value": "",
+      "type": "string",
+      "description": "Destination town name, from Places Lookup."
+    },
+    {
+      "key": "quoteno",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically by 'Request Quote'."
+    },
+    {
+      "key": "waybillno",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically once a waybill is created."
+    },
+    {
+      "key": "collectno",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically once a collection is created."
+    },
+    {
+      "key": "defItemName",
+      "value": "",
+      "type": "string",
+      "description": "Default content item name to look up."
+    }
+  ]
+}
