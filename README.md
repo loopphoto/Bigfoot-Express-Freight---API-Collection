@@ -4,6 +4,13 @@ A Postman collection for customers integrating with the Bigfoot Express
 Freight shipping API, which is powered by [Parcel Perfect](https://www.parcelperfect.com/)'s
 Ecommerce Service (JSON API, v27).
 
+**TL;DR**: import both files from [`postman/`](postman/) into Postman, fill in
+your `email`/`password`/`accnum` in the environment, set the collection's
+`baseUrl` to your production service URL, then run **1. Authentication → 1 -
+Get Salt** followed by **2 - Get Secure Token**. Once both return
+`errorcode: 0`, you're authenticated and ready to use the rest of the
+collection.
+
 With this collection you can, directly from Postman:
 
 - Authenticate and manage an API session
@@ -19,6 +26,10 @@ With this collection you can, directly from Postman:
 ├── postman/
 │   ├── Bigfoot Express Freight API.postman_collection.json     # import this
 │   └── Bigfoot Express Freight - My Account.postman_environment.json
+├── guides/
+│   ├── curl-quickstart.md                                      # copy-pasteable curl commands
+│   ├── nodejs/quickstart.js                                    # end-to-end Node.js example
+│   └── python/quickstart.py                                    # end-to-end Python example
 └── refs/API/Parcel Perfect/
     ├── Parcel Perfect Ecommerce Service - v27.pdf / .xlsx       # full field-level spec
     └── *.phps.txt                                               # Parcel Perfect's own PHP/SOAP/JSON examples
@@ -218,6 +229,22 @@ shipment afterwards.
   nine `surchargeflag` fields are supported on most shipment-related calls
   but omitted from the example payloads for brevity — see the full
   field-level spec below for the complete list.
+
+## Other integration guides
+
+Prefer scripting over Postman? [`guides/`](guides/) has the same
+authenticate → look up places → quote → convert-to-collection flow as
+copy-pasteable code:
+
+| Guide | For |
+| --- | --- |
+| [`curl-quickstart.md`](guides/curl-quickstart.md) | Testing from a terminal, or any language via shell |
+| [`nodejs/quickstart.js`](guides/nodejs/quickstart.js) | Node.js 18+ (built-in `fetch`) |
+| [`python/quickstart.py`](guides/python/quickstart.py) | Python 3.8+ (`requests`) |
+
+Each is self-contained, configured via environment variables (`BASE_URL`,
+`EMAIL`, `PASSWORD`, ...), and has been run against the live demo endpoint to
+confirm the request format works.
 
 ## Reference material
 
