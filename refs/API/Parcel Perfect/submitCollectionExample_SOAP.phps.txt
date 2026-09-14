@@ -1,0 +1,189 @@
+<?php 
+
+	/* 
+	 * This example will go through:
+	 * 1) Obtaining a token for submissions
+	 * 2) getting places for collection and delivery
+	 * 3) building the submitCollection array for submission
+	 */
+	
+	// Initialise SOAP settings
+	ini_set('soap.wsdl_cache_enabled', 0);
+	ini_set('soap.wsdl_cache_ttl', 900);
+	ini_set('default_socket_timeout', 15);
+
+	// Path the wsdl you are testing
+	$url = 'http://adpdemo.pperfect.com/ecomService/v10/Soap/index.php?wsdl';
+
+	// Create a soapclient 
+	// see http://php.net/manual/en/soapclient.soapclient.php for more details on usage
+	// Trace set to 1 for debugging and outputting errors
+	$client = new SoapClient(
+		$url, 
+		array('trace' => 1)
+	);
+	
+	$nl = "<br>\n";
+
+	echo "\n----------------------\n";
+	echo "<br>\nStarting Soap Test Script<br>\n";	
+
+	function getToken($client) {
+		
+		//change this to your relevant information
+		$username = 'username@parcelperfect.com';
+		$password = 'password';
+		$salt = '';
+		
+		$params = array(
+		  "email" => $username,
+		);
+
+		//Get Salt and MD5 Hash it
+		$result = $client->__soapCall("Auth_getSalt", array($params));
+		
+		// A mistake has been made with the submission
+		if($result->errorcode != 0) {
+			echo $result->errormessage."<br>";
+		} else {			
+			// Extract and process the salt for secureToken usage
+			$salt = $result->results[0];
+			
+			echo "<br>\nSalt: <br>\n";
+			print_r($salt);
+			
+			$password_crypt = md5($password.$salt->salt);
+			echo "<br>\nCrypted Password: ".$password_crypt."<br>\n";
+		}
+
+		//Get Token
+		if(isset($password_crypt) && $password_crypt != '') {
+			
+			$params = array(
+			  "email" => $username,
+			  "password" => $password_crypt
+			);
+			$result = $client->__soapCall("Auth_getSecureToken", array($params));
+			
+			// A mistake has been made with the submission
+			if($result->errorcode != 0) {
+				echo $result->errormessage."<br>\n";
+			} else {
+				// Extract and process the tokenid for compound_collection_params's usage
+				$token = $result->results[0];
+				$token_id = $token->token_id;
+				echo "<br>\nSecureToken: ".$token_id."<br>\n";
+				return $token_id;
+			}
+			
+		}
+	}
+
+	
+	function submitCollection($client, $token_id) {
+		
+		echo "<br>\nSubmitting Compound Collection<br>\n";
+		
+		// All the waybills being submitted uses the below 
+		// information for a full waybill submission
+		
+		$collectParams['details'] = array();
+        $collectParams['details']['collectiondate'] = "01.02.2018";
+        $collectParams['details']['specinstruction'] = "This is a test";
+        $collectParams['details']['reference'] = "This is a test";
+		$collectParams['details']['service'] = "ONX";
+        $collectParams['details']['accnum'] = "PPO";
+        //originating location
+        $collectParams['details']['origperadd1'] = 'Address line 1';
+        $collectParams['details']['origperadd2'] = 'Address line 2';
+        $collectParams['details']['origperadd3'] = 'Address line 3';
+        $collectParams['details']['origperadd4'] = 'Address line 4';
+        $collectParams['details']['origperphone'] = '012345678';
+        $collectParams['details']['origpercell'] = '012345678';
+        
+        $collectParams['details']['origplace'] = 4969;
+        $collectParams['details']['origtown'] = "CLAREMONT Cape Town";
+        $collectParams['details']['origpers'] = 'TESTCUSTOMER';
+        $collectParams['details']['origpercontact'] = 'origcontactsname';
+        $collectParams['details']['origperpcode'] = '6730'; //postal code
+				
+		//destination location details
+        $collectParams['details']['destperadd1'] = 'Address line 1';
+        $collectParams['details']['destperadd2'] = 'Address line 2';
+        $collectParams['details']['destperadd3'] = 'Address line 3';
+        $collectParams['details']['destperadd4'] = 'Address line 4';
+        $collectParams['details']['destperphone'] = '012345678';
+        $collectParams['details']['destpercell'] = '012345678';
+        
+        //i chose the 1st result, but this will be up to the user as above
+        $collectParams['details']['destplace'] = 5437;
+        $collectParams['details']['desttown'] = "CLAREMONT (Cape Town)";
+        $collectParams['details']['destpers'] = 'TESTCUSTOMER';
+        $collectParams['details']['destpercontact'] = 'destcontactsname';
+        $collectParams['details']['destperpcode'] = '3340'; //postal code
+		$collectParams['details']['starttime'] = '08:00'; 
+		$collectParams['details']['endtime'] = '16:30'; 
+		$collectParams['details']['notes'] = 'collection note'; 
+
+		/* Add the Contents:
+         * There needs to be at least 1 contest item with an "actmass" > 0 otherwise a rate will not calculate.
+		 * "Contents" needs to be an array object, even if there is only one contents item. */
+         
+        //Create the waybill's contents array object
+        $collectParams['contents'] = array();
+		
+		//Create first contents item (index 0 in the contents array)
+        $collectParams['contents'][0] = array();
+		
+		//Add contents details
+        $collectParams['contents'][0]['item'] = 1;
+        $collectParams['contents'][0]['description'] = 'this is a test';
+        $collectParams['contents'][0]['pieces'] = 1;
+        $collectParams['contents'][0]['dim1'] = 1;
+        $collectParams['contents'][0]['dim2'] = 1;
+        $collectParams['contents'][0]['dim3'] = 1;
+        $collectParams['contents'][0]['actmass'] = 1;
+		$collectParams['contents'][0]['defitem'] = 1;
+        
+		//Create second contents item (index 1 in the contents array)
+        $collectParams['contents'][1] = array();
+		
+		//Add contents details
+        $collectParams['contents'][1]['item'] = 2;
+        $collectParams['contents'][1]['description'] = 'this is another test';
+        $collectParams['contents'][1]['pieces'] = 1;
+        $collectParams['contents'][1]['dim1'] = 1;
+        $collectParams['contents'][1]['dim2'] = 1;
+        $collectParams['contents'][1]['dim3'] = 1;
+        $collectParams['contents'][1]['actmass'] = 1;
+		$collectParams['contents'][1]['defitem'] = 1;
+				
+		// Finally make the call to the webservice	
+		$result = $client->__soapCall (
+			"Collection_submitCollection", 
+			array(
+				$token_id, 
+				$collectParams
+			)
+		);
+
+		// Check for and output any errors with submission
+		if($result->errorcode != 0) {
+			echo $result->errormessage."<br>";
+		} else {
+			echo "<br>\nSubmit Collection Request Result:<br>\n";
+			print_r($result);
+		}		
+		
+	}
+
+	// Call the above methods to get a Token and submit a compound collection.
+	$token_id = getToken($client);	
+	submitCollection($client, $token_id);
+	
+	echo "Script finished";
+	echo "<br>\n----------------------<br>\n";
+	
+		
+		
+?>

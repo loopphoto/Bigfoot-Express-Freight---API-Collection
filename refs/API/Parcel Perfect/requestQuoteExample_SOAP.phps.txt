@@ -1,0 +1,211 @@
+<?php
+
+echo "Starting Soap Test Script<BR>\n<BR>\n";
+
+ini_set('soap.wsdl_cache_enabled', 0);
+ini_set('soap.wsdl_cache_ttl', 900);
+ini_set('default_socket_timeout', 15);
+
+$url = 'http://adpdemo.pperfect.com/ecomService/v10/Soap/index.php?wsdl';
+$username = 'username@parcelperfect.com';
+$password = 'password';
+
+$client = new SoapClient($url);
+
+$salt = '';
+$params = array(
+  "email" => $username,
+);
+
+//Get Salt and MD5 Hash it
+$result = $client->__soapCall("Auth_getSalt", array($params));
+if($result->errorcode != 0){
+	echo $result->errormessage."<br>";
+}else{
+	$salt = $result->results[0];
+	echo "Salt: ";
+	print_r($salt);
+	echo "<br>";
+	$password_crypt = md5($password.$salt->salt);
+	echo "Crypted Password: ".$password_crypt."<br>";
+}
+
+//Get Tokin
+if(isset($password_crypt) && $password_crypt != ''){
+	$params = array(
+	  "email" => $username,
+	  "password" => $password_crypt
+	);
+	$result = $client->__soapCall("Auth_getSecureToken", array($params));
+	
+	if($result->errorcode != 0){
+		echo $result->errormessage."<br>";
+	}else{
+		$token = $result->results[0];
+		$token_id = $token->token_id;
+		echo 'SecureToken: '.$token_id.'<br>';
+	}
+}
+
+echo "<BR>\n<BR>\nGet Destination Details By Postcode<BR>\n<BR>\n";
+
+//Get Destination Details
+$params = array(
+  //"postcode" => '7580'
+  "postcode" => '7700'
+);
+$result = $client->__soapCall("Quote_getPlacesByPostcode", array($token_id,$params));
+if($result->errorcode != 0){
+	echo $result->errormessage."<br>";
+}else{
+	$cnt = count($result->results);
+	$town = $result->results;
+	for($x=0;$x<$cnt;$x++){
+		//echo $town[$x]->town.' ('.$town[$x]->place.')<br>';
+	}
+}
+
+$details = '';
+$contents = '';
+$accnum = '';
+$origplace = 2045;
+$origcode = '2148';
+$destplace = 4968;
+$destcode = '7700';
+$item = '';
+$pieces = '';
+$dim1 = '';
+$dim2 = '';
+$dim3 = '';
+$actmass = '';
+
+echo "<BR>\n<BR>\nRequest a Quote<BR>\n<BR>\n";
+
+//Request a Quote
+$requestQuote = array();
+$requestQuote['details'] = array();
+$requestQuote['details']['waybill'] = '';
+$requestQuote['details']['accnum'] = ''; 
+$requestQuote['details']['costcentre'] = ''; 
+$requestQuote['details']['service'] = '';
+$requestQuote['details']['waydate'] = ''; 
+$requestQuote['details']['origpers'] = 'TESTCUSTOMER';
+$requestQuote['details']['origperadd1'] = 'Address line 1';
+$requestQuote['details']['origperadd2'] = 'Address line 2'; 
+$requestQuote['details']['origperadd3'] = 'Address line 3';
+$requestQuote['details']['origperadd4'] = 'Address line 4';
+$requestQuote['details']['origplace'] = $origplace;
+$requestQuote['details']['origtown'] = '';
+$requestQuote['details']['origperpcode'] = $origcode;
+$requestQuote['details']['origpercontact'] = 'origcontactsname';
+$requestQuote['details']['origperphone'] = '012345678';
+$requestQuote['details']['origperphone2'] = '';
+$requestQuote['details']['origpercell'] = '012345678';
+$requestQuote['details']['destpers'] = 'TESTCUSTOMER';
+$requestQuote['details']['destperadd1'] = 'Address line 1';
+$requestQuote['details']['destperadd2'] = 'Address line 2';
+$requestQuote['details']['destperadd3'] = 'Address line 3'; 
+$requestQuote['details']['destperadd4'] = 'Address line 4';
+$requestQuote['details']['destplace'] = $destplace;
+$requestQuote['details']['desttown'] = '';
+$requestQuote['details']['destperpcode'] = $destcode;
+$requestQuote['details']['destpercontact'] = 'destcontactsname';
+$requestQuote['details']['destperphone'] = '012345678';
+$requestQuote['details']['destperphone2'] = '';
+$requestQuote['details']['destpercell'] = '012345678';
+$requestQuote['details']['duedate'] = '';
+$requestQuote['details']['specinstruction'] = 'This is a test';
+$requestQuote['details']['reference'] = 'This is a test';
+$requestQuote['details']['insuranceflag'] = '';
+$requestQuote['details']['instype'] = '';
+$requestQuote['details']['declaredvalue'] = '';
+$requestQuote['details']['nondoxflag'] = '';
+$requestQuote['details']['currency'] = ''; 
+$requestQuote['details']['customsvalue'] = '';
+$requestQuote['details']['surchargeflag1'] = '';
+$requestQuote['details']['surchargeflag2'] = '';
+$requestQuote['details']['surchargeflag3'] = '';
+$requestQuote['details']['surchargeflag4'] = '';
+$requestQuote['details']['surchargeflag5'] = '';
+$requestQuote['details']['surchargeflag6'] = '';
+$requestQuote['details']['surchargeflag7'] = '';
+$requestQuote['details']['surchargeflag8'] = '';
+$requestQuote['details']['surchargeflag9'] = '';
+
+$requestQuote['contents'] = array(); //freight contents of waybill/quote
+
+$requestQuote['contents'][0] = array();
+$requestQuote['contents'][0]['item'] = 1;
+$requestQuote['contents'][0]['description'] = 'this is a test';
+$requestQuote['contents'][0]['pieces'] = 1;
+$requestQuote['contents'][0]['dim1'] = 1;
+$requestQuote['contents'][0]['dim2'] = 1;
+$requestQuote['contents'][0]['dim3'] = 1;
+$requestQuote['contents'][0]['actmass'] = 1;
+$requestQuote['contents'][0]['defitem'] = 1;
+
+//multiple references
+/*$requestQuote['wayrefs'] = array();
+$requestQuote['wayrefs'][0] = array();
+$requestQuote['wayrefs'][0]['reference'] = 'REF001';
+$requestQuote['wayrefs'][1] = array();
+$requestQuote['wayrefs'][1]['reference'] = 'REF002';
+
+echo"<br><br>Wayrefs<BR>";
+var_dump($requestQuote['wayrefs']);
+echo"<br><br>";*/
+
+//$requestQuote['tracks'] = array('Track001'); //tracking numbers for waybill
+$requestQuote['s_ttype'] = 'I';  //I = insert
+
+//var_dump($requestQuote);
+//echo "<br><br>";
+
+$result = $client->__soapCall("Quote_requestQuote", array($token_id,$requestQuote));
+if($result->errorcode != 0){
+	echo $result->errormessage."<br>";
+}else{
+	echo "<br><br>Quote Request Result<br>";
+	print_r($result);
+}
+
+echo "<BR>\n<BR>\nConvert Quote to Collection<BR>\n<BR>\n";
+
+//Convert Quote to Collection
+$convertQuote = array();
+$convertQuote['quoteno'] = $result->results[0]->quoteno;
+$convertQuote['waybillno'] = '';
+$convertQuote['starttime'] = '';
+$convertQuote['endtime'] = '';
+$convertQuote['notes'] = '';
+$convertQuote['printWaybill'] = 0;
+$convertQuote['printLabels'] = 0;
+
+$result = $client->__soapCall("Collection_quoteToCollection", array($token_id,$convertQuote));
+if($result->errorcode != 0){
+	echo $result->errormessage."<br>";
+}else{
+	print_r($result);
+}
+
+
+//Expires the Token
+$params = array(
+  "token_id" => $token_id
+);
+$result = $client->__soapCall("Auth_expireToken", array($params));
+
+if($result->errorcode != 0){
+	echo $result->errormessage."<br>";
+}else{
+	echo "<br><br>";
+	print_r($result);
+	echo "<br>Auth_expireToken: ";
+	$cnt = count($result->results);
+	$tokin = $result->results;
+	for($x=0;$x<$cnt;$x++){
+		echo $tokin[$x]->token_id.'<br>';
+	}
+}
+
+?>

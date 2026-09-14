@@ -1,0 +1,73 @@
+<?php
+
+// Zend Framework Json module
+require_once('Zend/Json.php');
+
+//exmaple class for submitting json requests
+class Example {
+
+    function __construct() {
+        $this->serviceURL = 'http://adpdemo.pperfect.com/ecomService/v10/Json/';
+        $this->username = 'username@parcelperfect.com'; //enter your username
+        $this->password = 'password'; //enter your password
+        $this->token = '';
+        //$this->json = new Services_JSON();
+    }
+
+    function runJsonExample() {
+
+        //get the salt
+        $params = array();
+        $saltParams['email'] = $this->username;
+        $response = $this->makeCall('Auth','getSalt',$saltParams);
+
+        //check for error
+        if ($response['errorcode'] == 0) { //no error
+            $salt = $response['results'][0]['salt'];
+            echo "Salt: ".$salt."\n";
+        } else { //error, display notice and quit
+            echo "Error: ".$response['errormessage']."\n";
+            die;
+        }
+
+        //get the token
+        $md5pass = md5($this->password.$salt);
+        //echo "md5pass $md5pass <BR>\n";
+		
+        $tokenParams = array();
+        $tokenParams['email'] = $this->username;
+        $tokenParams['password'] = $md5pass;
+        $response = $this->makeCall('Auth','getSecureToken',$tokenParams);
+
+        //check for error
+        if ($response['errorcode'] == 0) { //no error
+            $this->token = $response['results'][0]['token_id'];
+            echo "<BR><BR>Token: ".$this->token."\n";
+        } else { //error, display notice and quit
+            echo "Error: ".$response['errormessage']."\n";
+            die;
+        }
+
+        die;
+	}
+	
+	function makeCall($class, $method, $params, $token = null) {
+		$jsonParams = Zend_Json::encode($params);
+
+		$serviceCall = $this->serviceURL.'?params='.$jsonParams."&method=$method&class=$class";
+		if ($token != null) {
+			$serviceCall.='&token_id='.$token;
+		}
+
+		echo $serviceCall."\n\n";
+
+		$response = file_get_contents($serviceCall);
+		echo $response."\n\n";
+		return Zend_Json::decode($response);
+	}
+}
+
+$ex = new Example();
+$ex->runJsonExample();
+
+?>

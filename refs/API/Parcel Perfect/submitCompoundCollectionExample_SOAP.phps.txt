@@ -1,0 +1,291 @@
+<?php 
+
+	/*
+	Each Call to submitCompoundCollection must have the following:
+	- One collection, with origin details specified.
+	- One or more waybills with their destination details specified. 
+	The Orign details for the waybills will be taken from the collection details.
+	Each waybill can have one or multiple contents, tracks, wayrefs or tracks
+	The entire transaction will be rolled back if there is an issue with any of the following:
+	collection details, waybill details, waybill contents, waybill wayrefs or waybill tracks.
+	*/
+	
+	// Initialise SOAP settings
+	ini_set('soap.wsdl_cache_enabled', 0);
+	ini_set('soap.wsdl_cache_ttl', 900);
+	ini_set('default_socket_timeout', 15);
+
+	// Path the wsdl you are testing
+	$url = 'http://adpdemo.pperfect.com/ecomService/v10/Soap/index.php?wsdl';
+
+	// Create a soapclient 
+	// see http://php.net/manual/en/soapclient.soapclient.php for more details on usage
+	// Trace set to 1 for debugging and outputting errors
+	$client = new SoapClient(
+		$url, 
+		array('trace' => 1)
+	);
+	
+	$nl = "<br>\n";
+
+	echo "\n----------------------\n";
+	echo "<br>\nStarting Soap Test Script<br>\n";	
+
+	function getToken($client) {
+		
+		//change this to your relevant information
+		$username = 'username@parcelperfect.com';
+		$password = 'password';
+		$salt = '';
+		
+		$params = array(
+		  "email" => $username,
+		);
+
+		//Get Salt and MD5 Hash it
+		$result = $client->__soapCall("Auth_getSalt", array($params));
+		
+		// A mistake has been made with the submission
+		if($result->errorcode != 0) {
+			echo $result->errormessage."<br>";
+		} else {			
+			// Extract and process the salt for secureToken usage
+			$salt = $result->results[0];
+			
+			echo "<br>\nSalt: <br>\n";
+			print_r($salt);
+			
+			$password_crypt = md5($password.$salt->salt);
+			echo "<br>\nCrypted Password: ".$password_crypt."<br>\n";
+		}
+
+		//Get Token
+		if(isset($password_crypt) && $password_crypt != '') {
+			
+			$params = array(
+			  "email" => $username,
+			  "password" => $password_crypt
+			);
+			$result = $client->__soapCall("Auth_getSecureToken", array($params));
+			
+			// A mistake has been made with the submission
+			if($result->errorcode != 0) {
+				echo $result->errormessage."<br>\n";
+			} else {
+				// Extract and process the tokenid for compound_collection_params's usage
+				$token = $result->results[0];
+				$token_id = $token->token_id;
+				echo "<br>\nSecureToken: ".$token_id."<br>\n";
+				return $token_id;
+			}
+			
+		}
+	}
+
+	
+	function submitCompoundCollection($client, $token_id) {
+		
+		echo "<br>\nSubmitting Compound Collection<br>\n";
+		
+		// All the waybills being submitted uses the below 
+		// information for a full waybill submission
+		
+		// The collection's details are below:		
+		$collection_details = array(
+			"collectno" => 6452,
+			"accnum" => "PPOT",
+			"collectiondate" => "18.01.2018",
+			"origpers" => "Orig Person",
+			"origperadd1" =>  "6 Main Road",
+			"origperadd2" => "Claremont",
+			"origperadd3" => "Cape town",
+			"origperadd4" => "Western Cape",
+			"origplace" =>  4969,
+			"origtown" =>  "CLAREMONT Cape Town",
+			"origperpcode" =>  "7700",
+			"origpercontact" =>  "A Person",
+			"origperphone" =>  "0217625454",
+			"origperphone2" =>  "",
+			"origpercell" =>  "0785555555",
+			"origlatitude" =>  34.12345,
+			"origlongitude" =>  32.12345,
+			"starttime" =>  "08:00",
+			"endtime" =>  "16:30",
+			"notes" =>  "waybill notes",
+			"weight" =>  1.58,
+			"pieces" =>  1
+		);
+		
+		// define the first waybill now, we add it to the entire call later
+		// destplace, desttown, destpers, destpercontact, destperpcode inputs are mandatory
+		$first_waybill = array(
+			"details" => array(
+				"waybill" => "COMPCOLWAY3",
+				"waydate" => "11.01.2018",
+				"service" => "ONX",
+				"destperadd1" => "11 Lansdowne Road",
+				"destperadd2" => "Claremont",
+				"destperadd3" => "Cape Town",
+				"destperadd4" => "Western Cape",
+				"destplace" => 5437,
+				"destperpcode" => "",
+				"desttown" => "CLAREMONT (Cape Town)",
+				"destpers" => "Dest person",
+				"destpercontact" => "A Person",
+				"destperphone" => "0217625454",
+				"destperphone2" => "",
+				"destpercell" => "0785555555",
+				"destperemail" => "example@email.com",
+				"duedate" => "20.01.2018",
+				"notifydestpers" => 0,
+				"specinstruction" => "instruction",
+				"reference" => "waybill reference",				
+				"insuranceflag"=> 1,
+				"instype"=> 1,
+				"declaredvalue"=> 58.59,
+				"nondoxflag"=> 0,
+				"currency"=>"ZAR",
+				"customsvalue"=> 58.59,
+				"surchargeflag1"=> 1,
+				"surchargeflag2"=> 0,
+				"surchargeflag3"=> 0,
+				"surchargeflag4"=> 0,
+				"surchargeflag5"=> 0,
+				"surchargeflag6"=> 0,
+				"surchargeflag7"=> 0,
+				"surchargeflag8"=> 0,
+				"surchargeflag9"=> 0
+			),
+			"contents" => array(
+				0 => array(
+					"item"=>  1,
+					"pieces"=>  1,
+					"description"=>  "contentsDesc",
+					"actmass"=>  2.5,
+					"dim1"=>  10,
+					"dim2"=>  15,
+					"dim3"=>  20,
+					"defitem"=>  1
+				)
+			),
+			"tracks" => array(
+				0 => array(
+					"trackno"=> "COMPCOLWAY30001",
+					"parcelno"=>  1,
+					"item"=>  1
+				)
+			),
+			"wayrefs" => array(
+				0 => array(
+					"reference"=> "REFERENCE112",
+					"pageno"=>  1
+				)
+			)
+		);
+		
+		// define the second waybill now, we add it to the entire call later
+		// desttown, destpers, destpercontact, destperpcode inputs are mandatory
+		$second_waybill = array(
+			"details" => array(
+				"waybill" => "COMPCOLWAY4",
+				"waydate" => "11.01.2018",
+				"service" => "ONX",
+				"destperadd1" => "11 Lansdowne Road",
+				"destperadd2" => "Claremont",
+				"destperadd3" => "Cape Town",
+				"destperadd4" => "Western Cape",
+				"destplace" => 5437,
+				"destperpcode" => "",
+				"desttown" => "CLAREMONT (Cape Town)",
+				"destpers" => "Dest person",
+				"destpercontact" => "A Person",
+				"destperphone" => "0217625454",
+				"destperphone2" => "",
+				"destpercell" => "0785555555",
+				"destperemail" => "example@email.com",
+				"duedate" => "20.01.2018",
+				"notifydestpers" => 0,
+				"specinstruction" => "instruction",
+				"reference" => "waybill reference",
+				"insuranceflag"=> 1,
+				"instype"=> 1,
+				"declaredvalue"=> 58.59,
+				"nondoxflag"=> 0,
+				"currency"=>"ZAR",
+				"customsvalue"=> 58.59,
+				"surchargeflag1"=> 1,
+				"surchargeflag2"=> 0,
+				"surchargeflag3"=> 0,
+				"surchargeflag4"=> 0,
+				"surchargeflag5"=> 0,
+				"surchargeflag6"=> 0,
+				"surchargeflag7"=> 0,
+				"surchargeflag8"=> 0,
+				"surchargeflag9"=> 0
+			),
+			"contents" => array(
+				0 => array(
+					"item"=>  1,
+					"pieces"=>  1,
+					"description"=>  "contentsDesc",
+					"actmass"=>  1.5,
+					"dim1"=>  10,
+					"dim2"=>  15,
+					"dim3"=>  20,
+					"defitem"=>  1
+				)
+			),
+			"tracks" => array(
+				0 => array(
+					"trackno"=> "COMPCOLWAY40001",
+					"parcelno"=>  1,
+					"item"=>  1
+				)
+			),
+			"wayrefs" => array(
+				0 => array(
+					"reference"=> "REFERENCE112",
+					"pageno"=>  1
+				)
+			)
+		);
+					
+					
+		// Put all the paramaters together
+		$compound_collection_params = array (
+			"details" => $collection_details,
+			"waybills" => array(
+				$first_waybill,
+				$second_waybill
+			)
+		);
+		
+		// Finally make the call to the webservice	
+		$result = $client->__soapCall (
+			"Collection_submitCompoundCollection", 
+			array(
+				$token_id, 
+				$compound_collection_params
+			)
+		);
+
+		// Check for and output any errors with submission
+		if($result->errorcode != 0) {
+			echo $result->errormessage."<br>";
+		} else {
+			echo "<br>\nSubmit Compound Collection Request Result:<br>\n";
+			print_r($result);
+		}		
+		
+	}
+
+	// Call the above methods to get a Token and submit a compound collection.
+	$token_id = getToken($client);	
+	submitCompoundCollection($client, $token_id);
+	
+	echo "Script finished";
+	echo "<br>\n----------------------<br>\n";
+	
+		
+		
+?>
